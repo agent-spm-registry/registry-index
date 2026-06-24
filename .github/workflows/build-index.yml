@@ -1,0 +1,48 @@
+name: Build SPM Skill Index
+
+on:
+  # 1. Run as a fallback every 10 minutes
+  schedule:
+    - cron: '*/10 * * * *'
+  # 2. Run whenever an author pushes a skill and triggers a webhook
+  repository_dispatch:
+    types: [skill_updated]
+  # 3. Allow manual triggering for debugging
+  workflow_dispatch:
+
+jobs:
+  build-index:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Fetch and Aggregate Skills
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 1. Use the GitHub CLI to list all repositories in your organization
+          # 2. For each repo, download the spm.json file
+          # 3. Combine all spm.json objects into one large JSON array
+          # 4. Save that array to a file named 'registry-index.json'
+          
+          echo "Run your Node or Bash script here to generate registry-index.json"
+
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: . # Uploads the folder containing registry-index.json
+
+  deploy:
+    needs: build-index
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
