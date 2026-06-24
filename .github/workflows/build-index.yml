@@ -1,13 +1,10 @@
 name: Build SPM Skill Index
 
 on:
-  # 1. Run as a fallback every 10 minutes
   schedule:
     - cron: '*/10 * * * *'
-  # 2. Run whenever an author pushes a skill and triggers a webhook
   repository_dispatch:
     types: [skill_updated]
-  # 3. Allow manual triggering for debugging
   workflow_dispatch:
 
 jobs:
@@ -21,17 +18,41 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. Use the GitHub CLI to list all repositories in your organization
-          # 2. For each repo, download the spm.json file
-          # 3. Combine all spm.json objects into one large JSON array
-          # 4. Save that array to a file named 'registry-index.json'
+          # 1. Initialize an empty JSON array
+          echo "[]" > registry-index.json
           
-          echo "Run your Node or Bash script here to generate registry-index.json"
+          # 2. Get all public repositories in your organization
+          # Note: If your org is NOT named 'agent-spm-registry', change it below!
+          REPOS=$(gh repo list agent-spm-registry --public --limit 1000 --json name -q '.[].name')
+          
+          for repo in $REPOS; do
+            echo "Checking $repo for spm.json..."
+            
+            # 3. Try to fetch the spm.json directly from the main branch
+            HTTP_CODE=$(curl -s -w "%{http_code}" -o temp.json "https://raw.githubusercontent.com/agent-spm-registry/$repo/main/spm.json")
+            
+            # 4. If the file exists (HTTP 200), add it to our array
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Found spm.json in $repo! Adding to registry..."
+              
+              # This jq command safely merges the new JSON into our main array.
+              # It handles both single skills (objects) and grouped skills (arrays)!
+              jq -s '.[0] + (.[1] | if type=="array" then . else [.] end)' registry-index.json temp.json > temp-registry.json
+              mv temp-registry.json registry-index.json
+            else
+              echo "No spm.json found in $repo."
+            fi
+          done
+          
+          # Clean up
+          rm -f temp.json
+          
+          echo "Successfully generated registry-index.json!"
 
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: . # Uploads the folder containing registry-index.json
+          path: . 
 
   deploy:
     needs: build-index
